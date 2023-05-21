@@ -2,42 +2,45 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from IPython.display import clear_output
-import lazypredict
+from sklearn.metrics import mean_squared_error, r2_score
 from lazypredict.Supervised import LazyRegressor
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 #%%
-df = pd.read_csv(r"C:\Users\David\PycharmProjects\deep\houseprices\train.csv")
+df = pd.read_csv(r"C:\Users\David\PycharmProjects\deep\houseprices\train.csv", index_col=[0])
 
 null_count = pd.DataFrame(df.isnull().sum().sort_values(ascending=False))
 null_count["Index"] = [df.columns.get_loc(c) for c in null_count.index if c in df]
-droplist = ["Id", "PoolQC", "MiscFeature", "Alley", "Fence"]
-df.drop(droplist, axis=1, inplace=True)
+droplist = ["PoolQC", "MiscFeature", "Alley", "Fence"]
+df = df.drop(droplist, axis=1)
 
-# imputing missing values use simple impute save a lot of lines
-df['FireplaceQu'].fillna(df['FireplaceQu'].mode()[0], inplace=True)
-df["LotFrontage"].fillna(df["LotFrontage"].median(), inplace=True)
-df["GarageYrBlt"].fillna(df["YearBuilt"], inplace=True)
-df['GarageCond'].fillna(df['GarageCond'].mode()[0], inplace=True)
-df['GarageType'].fillna(df['GarageType'].mode()[0], inplace=True)
-df['GarageFinish'].fillna(df['GarageFinish'].mode()[0], inplace=True)
-df['GarageQual'].fillna(df['GarageQual'].mode()[0], inplace=True)
-df['BsmtFinType2'].fillna(df['BsmtFinType2'].mode()[0], inplace=True)
-df['BsmtExposure'].fillna(df['BsmtExposure'].mode()[0], inplace=True)
-df['BsmtQual'].fillna(df['BsmtQual'].mode()[0], inplace=True)
-df['BsmtCond'].fillna(df['BsmtCond'].mode()[0], inplace=True)
-df['BsmtFinType1'].fillna(df['BsmtFinType1'].mode()[0], inplace=True)
-df['MasVnrArea'].fillna(df['MasVnrArea'].median(), inplace=True)
-df["MasVnrType"].fillna(df["MasVnrType"].mode()[0], inplace=True)
-df['Electrical'].fillna(df['Electrical'].mode()[0], inplace=True)
+cont_null_cols = ['MasVnrArea', "LotFrontage"]
+disc_null_cols = ['FireplaceQu', "LotFrontage", "GarageYrBlt", 'GarageCond', 'GarageType', 'GarageFinish', 'GarageQual',
+                  'BsmtFinType2', 'BsmtExposure', 'BsmtQual', 'BsmtFinType1', "MasVnrType", 'Electrical']
+imputer_cont = SimpleImputer(missing_values=np.nan, strategy="median")
+imputer_disc = SimpleImputer(missing_values=np.nan, strategy="most_frequent")
+df.loc[:, cont_null_cols] = imputer_cont.fit_transform(df.loc[:, cont_null_cols])
+df.loc[:, disc_null_cols] = imputer_disc.fit_transform(df.loc[:, disc_null_cols])
 
-# taking care of discrete variables that are ints
-pd.get_dummies(df["MSSubClass"], drop_first=True)
+disc_cols = [c for c in df.columns if df[c].dtype in ['object', 'bool']]
+disc_cols.insert(0, "MSSubClass")
+disc_cols_index = [df.columns.get_loc(c) for c in disc_cols]
+ct = ColumnTransformer([('non_num', OneHotEncoder(), disc_cols_index)], remainder='passthrough')
+processed = ct.fit_transform(df)
 
-encoder = OneHotEncoder(handle_unknown="ignore")
+feat = df.drop("SalePrice", axis=1)
+label = df["SalePrice"]
+
+
+v = pd.DataFrame(columns=disc_cols, data=processed)
+feat_train, feat_test, label_train, label_test = train_test_split(feat, label, test_size=0.2, random_state=1)
+
+
+cont_cols = [c for c in df.columns if df[c].dtype in ['int64', 'float64', 'int32', 'float32']]
+sc = StandardScaler()
+feat_train[:, 3:] = sc.fit_transform(feat_train[:, 3:])
+feat_test[:, 3:] = sc.transform(feat_test[:, 3:])
